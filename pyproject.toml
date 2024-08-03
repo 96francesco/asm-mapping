@@ -1,0 +1,33 @@
+# https://python-poetry.org/docs/configuration/
+
+[tool.poetry]
+name = "asm-mapping"
+version = "0.1.0"
+description = "Deep learning, satellite imagery and data fusion for semantic segmentation of artisanal mining"
+authors = ["96francesco <francesco.pasanisi96@gmail.com>"]
+license = "GPL 3.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+matplotlib = "3.8.0"
+numpy = "1.23"
+optuna = "3.5.0"
+torch = "2.2.0"
+torchmetrics = "1.3.1"
+torchvision = "0.17.0"
+scipy = "1.13.0"
+rasterio = "1.3.10"
+pillow = "10.3.0"
+segmentation-models-pytorch = "0.3.3"
+
+[virtualenvs]
+in-project = true
+prefer-active-python = true
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
