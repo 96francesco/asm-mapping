@@ -1,182 +1,118 @@
-# import libraries
-import pytorch_lightning as pl
-import segmentation_models_pytorch as smp
+# mypy: allow-untyped-defs
+import logging
+import argparse
+
 import torch
-import json
-import gc
-
-from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning import seed_everything
-from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.profilers import PyTorchProfiler
-from torch.utils.data import DataLoader, random_split
+import pytorch_lightning as pl
+import segmentation_models_pytorch as smp # type: ignore
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
+from torch.utils.data import DataLoader, random_split
 
-# import custom modules
-from asm_mapping.data.planetscope_dataset import PlanetScopeDataset
+from asm_mapping.data import DatasetMode
+from asm_mapping.train_test_predict.utils import load_config, get_dataset, get_model
 
-# clear CUDA cache
-torch.cuda.empty_cache()
-gc.collect()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# set seed for reproducibility
-seed_everything(42, workers=True)
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train ASM segmentation model")
+    parser.add_argument("--config", type=str, required=True, help="Path to config file")
+    args = parser.parse_args()
+    
+    # load config
+    config = load_config(args.config)
+    
+    # set seed
+    pl.seed_everything(config['seed'])
 
-# read config file
-with open('src/train_test_predict/train_config.json') as f:
-    config = json.load(f)
+    # get dataset and model classes
+    dataset_class = get_dataset(config)
+    model_class = get_model(config)
 
-mode_dict = {
-    "standalone": LitModelStandalone,
-    "late_fusion": LitModelLateFusion,
-    "early_fusion": LitModelEarlyFusion
-}
-
-datasource_dict = {
-    "planet": PlanetDataset,
-    "s1": Sentinel1Dataset,
-    "fusion": FusionDataset
-}
-
-if datasource_dict[config["datasource"]] == PlanetDataset:
-    dataset = PlanetDataset
-    normalization = planet_norm
-elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
-    dataset = Sentinel1Dataset
-    normalization = s1_norm
-elif datasource_dict[config["datasource"]] == FusionDataset:
-    dataset = FusionDataset
-    planet_norm = planet_norm
-    s1_norm = s1_norm
-
-
-# create training dataset
-training_dir = config["training_dir"]
-
-# handle data fusion case
-if datasource_dict[config["datasource"]] == FusionDataset:
-    print('Initializing fusion dataset')
-    training_dataset = dataset(training_dir,
-                            planet_normalization=planet_norm,
-                            s1_normalization=s1_norm)
-else:
-    print('Initializing standalone dataset')
-    training_dataset = dataset(training_dir,
-                            pad=True,
-                            normalization=normalization,
-                            transforms=True
-                            )
-
-# extract validation subset from the training set
-total_size = len(training_dataset)
-train_size = int(0.8 * total_size)
-val_size = total_size - train_size # get 20% of training set as validation set
-train_set, val_set = random_split(training_dataset, [train_size, val_size])
-
-# initialize dataloader
-batch_size = config["batch_size"]
-train_loader = DataLoader(train_set, 
-                        batch_size=batch_size,
-                        shuffle=True, num_workers=9,
-                        persistent_workers=True, 
-                        pin_memory=True,
-                        prefetch_factor=2)
-val_loader = DataLoader(val_set, 
-                        batch_size=batch_size,
-                        shuffle=False,
-                        num_workers=9, 
-                        persistent_workers=True, 
-                        pin_memory=True,
-                        prefetch_factor=2)
-
-# pre-trained checkpoints, for Late Fusion mode
-planet_checkpoint_path = 'models/checkpoints/planet_trial10_resnet34-epoch=98-val_f1score=0.79.ckpt'
-s1_checkpoint_path = 'models/checkpoints/s1_trial51-epoch=99-val_f1score=0.67.ckpt'
-
-# define model
-if config["mode"] == "late_fusion":
-    print('Initializing Late Fusion model')
-    model = LitModelLateFusion(
-        lr=config["learning_rate"],
-        threshold=config["threshold"],
-        weight_decay=config["weight_decay"],
-        pretrained_streams=True,
-        s1_checkpoint=s1_checkpoint_path,
-        planet_checkpoint=planet_checkpoint_path
+    # dataset initialization
+    dataset_mode = DatasetMode[config['dataset_mode']]
+    train_dataset = dataset_class(
+        config['training_dir'], 
+        mode=dataset_mode,
+        transforms=config['augmentation']['enabled'],
+        pad=config['pad']
     )
-elif config["mode"] == "early_fusion":
-    print('Initializing Early Fusion model')
-    model = LitModelEarlyFusion(
-        lr=config["learning_rate"],
-        threshold=config["threshold"],
-        weight_decay=config["weight_decay"],
-        alpha=config["alpha"],
-        gamma=config["gamma"]
+    
+    # extract validation subset from training dataset
+    train_size = int(config['train_val_split'] * len(train_dataset))
+    val_size = len(train_dataset) - train_size
+    train_dataset, val_dataset = random_split(train_dataset, [train_size, val_size])
+    
+    # dataloader initialization
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=config['batch_size'], 
+        shuffle=config['train_loader_shuffle'], 
+        num_workers=config['num_workers'],
+        persistent_workers=config['persistent_workers'],
+        pin_memory=config['pin_memory'],
+        prefetch_factor=config['prefetch_factor'],
     )
-else:
-    print('Initializing standalone model')
-    model = mode_dict[config["mode"]]
-    # define U-Net model
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=config['batch_size'], 
+        shuffle=config['val_loader_shuffle'], 
+        num_workers=config['num_workers'],
+        persistent_workers=config['persistent_workers'],
+        pin_memory=config['pin_memory'],
+        prefetch_factor=config['prefetch_factor']
+    )
+
+    # model initialization
     unet = smp.Unet(
-        encoder_name="resnet34",
-        decoder_use_batchnorm=True,
-        decoder_attention_type='scse',
-        encoder_weights=None,
-        in_channels=config["in_channels"],
-        classes=1, # 1 for binary classification
-        activation=None
+        encoder_name=config['encoder_name'],
+        decoder_attention_type=config['decoder_attention_type'],
+        in_channels=config['in_channels'],
+        classes=1
     )
-    model = model(model=unet,
-                in_channels=config["in_channels"],
-                lr=config["learning_rate"],
-                threshold=config["threshold"],
-                weight_decay=config["weight_decay"],
-                alpha=config["alpha"],
-                gamma=config["gamma"]
+    model = model_class(
+        model=unet,
+        lr=config['learning_rate'],
+        weight_decay=config['weight_decay'],
+        threshold=config['threshold'],
+        alpha=config['alpha'],
+        gamma=config['gamma']
     )
 
-# define filename for the checkpoints       
-filename_prefix = config["filename_prefix"]
-filename = filename_prefix + "-{epoch:02d}-{val_f1score:.2f}"
+    # callbacks
+    early_stop = EarlyStopping(
+        monitor=config['early_stopping']['monitor'],
+        patience=config['early_stopping']['patience'],
+        mode=config['early_stopping']['mode']
+    )
+    checkpoint = ModelCheckpoint(
+        dirpath=config['checkpoint_dir'],
+        filename=config['checkpoint_name']
+    )
 
-# define callbacks
-early_stop_callback = EarlyStopping(
-   monitor='val_loss',
-   min_delta=0.00,
-   patience=20,
-   verbose=True,
-   mode='min')
+    # TB logger
+    tb_logger = TensorBoardLogger(
+        save_dir=config['log_dir'], 
+        name=config['experiment_name']
+    )
 
-checkpoint_callback = ModelCheckpoint(
-    dirpath="models/checkpoints/",
-    filename=filename,
-    save_top_k=3,
-    verbose=False,
-    monitor='val_f1score',
-    mode='max',
-    save_last=False
-)
+    # Trainer
+    trainer = pl.Trainer(
+        max_epochs=config['epochs'],
+        callbacks=[early_stop, checkpoint],
+        val_check_interval=config['val_check_interval'],
+        logger=tb_logger,
+        devices=config['gpus']
+        # TODO: log_every_n_steps, define accelerator and DDP strategy?
+    )
 
-# initialize profiler
-profiler = PyTorchProfiler()
+    # start training
+    trainer.fit(model, train_loader, val_loader)
+    
+    # save model
+    torch.save(model.state_dict(), f"{config['checkpoint_dir']}/{config['checkpoint_name']}_final.pth")
 
-# set up logger
-logger = TensorBoardLogger("tb_logs", name=filename_prefix)
-
-# define trainer and start training
-trainer = pl.Trainer(max_epochs=config["epochs"],
-                     log_every_n_steps=10,
-                     accelerator='gpu',
-                     devices=1,
-                     detect_anomaly=False,
-                     strategy=DDPStrategy(find_unused_parameters=True),
-                    #  callbacks=[early_stop_callback, checkpoint_callback],
-                    callbacks=[checkpoint_callback],
-                     logger=logger,
-                    )
-# print(model)
-trainer.fit(model, train_loader, val_loader)
-
-# save model
-# torch.save(model.state_dict(), 'models/' + filename_prefix + '.pth')
+if __name__ == "__main__":
+    # main('train_config.yaml')
+    main()
