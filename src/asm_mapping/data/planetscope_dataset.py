@@ -137,11 +137,9 @@ class PlanetScopeDataset(Dataset): # type: ignore
 
             return normalized
       
-      
       def handle_nan_values(self, img: np.ndarray[Any, Any]) -> Any:
             img = np.nan_to_num(img, nan=np.nanmedian(img))
-            return median_filter(img, size=3)
-      
+            return median_filter(img, size=3) 
 
       @staticmethod
       def dynamic_pad(image: torch.Tensor, multiple: int = 32) -> torch.Tensor:
@@ -166,13 +164,7 @@ class PlanetScopeDataset(Dataset): # type: ignore
                                            mode='constant', 
                                            value=0)
 
-
       def __getitem__(self, idx: int) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:                  
-            # if self.config[self.mode]['use_gt']:
-            #       img_path, gt_path = self.dataset[idx]
-            # else:
-            #       img_path = self.dataset[idx]
-
             item = self.dataset[idx]
             if isinstance(item, tuple):
                   img_path, gt_path = item
