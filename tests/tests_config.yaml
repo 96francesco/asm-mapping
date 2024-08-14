@@ -1,0 +1,8 @@
+# for planetscope_dataset_test.py
+test_data:
+  dir: "data/test_data/planetscope"
+  len: 9
+
+# for lit_model_standalone_test.py
+model:
+  in_channels: 6
