@@ -19,6 +19,7 @@ class LitModelStandalone(pl.LightningModule):
             super().__init__()
             self.weight_decay: float = weight_decay
             self.lr: float = lr
+            self.in_channels: int = in_channels
             self.threshold: float = threshold
             self.alpha: float = alpha
             self.gamma: float = gamma
@@ -95,16 +96,12 @@ class LitModelStandalone(pl.LightningModule):
 
             probs = torch.sigmoid(logits) # convert logits to probabilities
             preds = (probs > self.threshold).float() # apply threshold to probrabilities
-            metrics = self.test_metrics(preds, y)
-
-            # log loss and accuracy metrics
-            self.log('test_loss', loss, sync_dist=True)
-            self.log_dict(metrics, sync_dist=True)
-    
-            # log ASM-specific metrics
-            self.log('precision_asm', metrics['precision_asm'][1], sync_dist=True)
-            self.log('recall_asm', metrics['recall_asm'][1], sync_dist=True)
-            self.log('f1_score_asm', metrics['f1_score_asm'][1], sync_dist=True)
+            
+            # compute metrics
+            self.test_metrics.update(preds, y)
+            metrics = self.test_metrics.compute()
+            self.log_dict({f'test_{k}': v for k, v in metrics.items()}, sync_dist=True)
+            self.test_metrics.reset()
 
             return loss
 
