@@ -1,8 +1,8 @@
 # Data
 data_source: PlanetScope  # one of: PlanetScope, Sentinel-1, Fusion
 dataset_mode: STANDALONE  # one of: STANDALONE, FUSION, INFERENCE (from DatasetMode enum)
-training_dir: /mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/split_0/planet/training_data
-pad: True # Apply or not padding
+training_dir: /mnt/guanabana/raid/home/pasan001/asm-mapping/data/split_0/planet/training_data
+# pad: True # Apply or not padding
 
 # Model
 mode: standalone  # one of: standalone, early_fusion, late_fusion
@@ -26,7 +26,6 @@ pin_memory: True
 persistent_workers: True
 prefetch_factor: 2
 batch_size: 16
-num_workers: 4
 train_loader_shuffle: True
 val_loader_shuffle: False
 
