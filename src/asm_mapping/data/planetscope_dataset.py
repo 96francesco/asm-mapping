@@ -32,6 +32,8 @@ class PlanetScopeDataset(Dataset): # type: ignore
                   self.transforms  = T.Compose([
                   T.RandomHorizontalFlip(),
                   T.RandomVerticalFlip(),
+                  T.RandomRotation(degrees=90),
+                  T.RandomAffine(degrees=0, scale=(0.9, 1.1), shear=None)
             ])
             
             self.percentiles: Tuple[float, float] = self.compute_global_percentiles()
