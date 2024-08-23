@@ -44,13 +44,13 @@ class LitModelStandalone(pl.LightningModule):
      
             # initiale metric collection
             metrics = MetricCollection({
-                  'accuracy': torchmetrics.Accuracy(task='binary', average='macro', threshold=self.threshold),
-                  'precision_macro': torchmetrics.Precision(task='binary', average='macro', threshold=self.threshold),
-                  'precision_asm': torchmetrics.Precision(task='binary', average=None, threshold=self.threshold, num_classes=2),
-                  'recall_macro': torchmetrics.Recall(task='binary', average='macro', threshold=self.threshold),
-                  'recall_asm': torchmetrics.Recall(task='binary', average=None, threshold=self.threshold, num_classes=2),
-                  'f1_score_macro': torchmetrics.F1Score(task='binary', average='macro', threshold=self.threshold),
-                  'f1_score_asm': torchmetrics.F1Score(task='binary', average=None, threshold=self.threshold, num_classes=2)
+                  'accuracy': torchmetrics.Accuracy(task='multiclass', average='macro', num_classes=2, threshold=self.threshold),
+                  'precision_macro': torchmetrics.Precision(task='multiclass', average='macro', num_classes=2, threshold=self.threshold),
+                  'precision_asm': torchmetrics.Precision(task='multiclass', average='none', num_classes=2, threshold=self.threshold),
+                  'recall_macro': torchmetrics.Recall(task='multiclass', average='macro', num_classes=2, threshold=self.threshold),
+                  'recall_asm': torchmetrics.Recall(task='multiclass', average='none', num_classes=2, threshold=self.threshold),
+                  'f1_score_macro': torchmetrics.F1Score(task='multiclass', average='macro', num_classes=2, threshold=self.threshold),
+                  'f1_score_asm': torchmetrics.F1Score(task='multiclass', average='none', num_classes=2, threshold=self.threshold)
             })
             
             self.train_metrics = metrics.clone(prefix='train_')
@@ -80,11 +80,23 @@ class LitModelStandalone(pl.LightningModule):
             
             probs = torch.sigmoid(outputs)
             preds = (probs > self.threshold).float()
-            f1 = self.val_metrics['f1_score_macro'](preds, y)
             
-            self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-            self.log('val_f1score', f1, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+            # update metrics
+            self.val_metrics.update(preds, y)
             
+            # compute metrics
+            metrics = self.val_metrics.compute()
+            
+            # log metrics
+            log_dict = {'val_loss': loss}
+            for k, v in metrics.items():
+                  if isinstance(v, torch.Tensor) and v.numel() > 1:
+                        log_dict[k] = v[1]
+                  else:
+                        log_dict[k] = v
+            self.log_dict(log_dict, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+            self.val_metrics.reset()
+                        
             return loss
 
       def test_step(self, test_batch: Tuple[torch.Tensor, torch.Tensor], 
@@ -100,7 +112,16 @@ class LitModelStandalone(pl.LightningModule):
             # compute metrics
             self.test_metrics.update(preds, y)
             metrics = self.test_metrics.compute()
-            self.log_dict({f'test_{k}': v for k, v in metrics.items()}, sync_dist=True)
+            
+            # log metrics
+            log_dict = {'test_loss': loss}
+            for k, v in metrics.items():
+                  if isinstance(v, torch.Tensor) and v.numel() > 1:
+                        log_dict[k] = v[1]
+                  else:
+                        log_dict[k] = v
+
+            self.log_dict(log_dict, sync_dist=True)
             self.test_metrics.reset()
 
             return loss
