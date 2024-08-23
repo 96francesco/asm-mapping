@@ -68,6 +68,7 @@ def main() -> None:
     unet = smp.Unet(
         encoder_name=config['encoder_name'],
         decoder_attention_type=config['decoder_attention_type'],
+        decoder_use_batchnorm=config['decoder_use_batchnorm'],
         in_channels=config['in_channels'],
         classes=1
     )
@@ -88,7 +89,7 @@ def main() -> None:
     )
     checkpoint = ModelCheckpoint(
         dirpath=config['checkpoint_dir'],
-        filename=config['checkpoint_name']
+        filename=config['experiment_name'] + "-{epoch:02d}-{val_f1score:.2f}"
     )
 
     # TB logger
@@ -111,8 +112,7 @@ def main() -> None:
     trainer.fit(model, train_loader, val_loader)
     
     # save model
-    torch.save(model.state_dict(), f"{config['checkpoint_dir']}/{config['checkpoint_name']}_final.pth")
+    torch.save(model.state_dict(), f"{config['checkpoint_dir']}/{config['experiment_name']}_final.pth")
 
 if __name__ == "__main__":
-    # main('train_config.yaml')
     main()
