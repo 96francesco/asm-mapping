@@ -1,3 +1,4 @@
+# mypy: allow-untyped-defs
 import os
 
 import yaml # type: ignore
@@ -5,7 +6,8 @@ import pytest
 import torch
 import numpy as np
 
-from asm_mapping.data.planetscope_dataset import PlanetScopeDataset, DatasetMode
+from asm_mapping.data.planetscope_dataset import PlanetScopeDataset
+from asm_mapping.data.dataset_mode import DatasetMode
 
 # load config
 config_path = os.path.join(os.path.dirname(__file__), 'tests_config.yaml')
