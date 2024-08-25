@@ -71,12 +71,13 @@ class PlanetScopeDataset(Dataset): # type: ignore
                   if self.gt_folder is not None:
                         gt_filenames = sorted(os.listdir(self.gt_folder))
                         for img_name in img_filenames:
-                              gt_name = 'nicfi_gt_' + img_name.split('_')[-1]
+                              index = img_name.split('_')[-1]
+                              gt_name = f'gt_{index}'
                               if gt_name in gt_filenames:
                                     img_path = os.path.join(self.img_folder, img_name)
                                     gt_path = os.path.join(self.gt_folder, gt_name)
                                     dataset.append((img_path, gt_path))
-                  else:
+                  else:                   
                         raise ValueError("Ground truth folder is None but use_gt is True")
             else:
                   dataset = [os.path.join(self.img_folder, img_name) for img_name in img_filenames]
@@ -122,11 +123,6 @@ class PlanetScopeDataset(Dataset): # type: ignore
             
             p2 = np.percentile(all_values, 2)
             p98 = np.percentile(all_values, 98)
-            
-            # print(f"Global stats - min: {all_values.min()}, 
-            #       max: {all_values.max()}, 
-            #       mean: {all_values.mean()}")
-            # print(f"Computed percentiles - p2: {p2}, p98: {p98}")
             
             return p2, p98
       
