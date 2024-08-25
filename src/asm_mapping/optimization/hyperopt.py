@@ -69,7 +69,7 @@ def objective(trial: Trial, train_set: Dataset, val_set: Dataset, # type: ignore
 
     # fit model and return F1 score
     trainer.fit(model, train_loader, val_loader)
-    val_f1score = trainer.callback_metrics["val_f1score"].item()
+    val_f1score = trainer.callback_metrics["val_f1_score_asm"].item()
 
     return val_f1score
 
@@ -90,7 +90,8 @@ def main() -> None:
     training_dataset = dataset_class(
         config['data']['training_dir'],
         mode=dataset_mode,
-        transforms=True
+        transforms=True,
+        pad=config['data']['pad']
     )
     train_size = int((1 - config['validation_split']) * len(training_dataset))
     val_size = len(training_dataset) - train_size
