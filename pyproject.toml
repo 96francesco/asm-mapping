@@ -7,6 +7,7 @@ description = "Deep learning, satellite imagery and data fusion for semantic seg
 authors = ["96francesco <francesco.pasanisi96@gmail.com>"]
 license = "GPL 3.0"
 readme = "README.md"
+keywords = ["deep learning", "satellite imagery", "data fusion", "semantic segmentation", "artisanal mining"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -20,6 +21,12 @@ scipy = "1.13.0"
 rasterio = "1.3.10"
 pillow = "10.3.0"
 segmentation-models-pytorch = "0.3.3"
+tensorboard = "^2.17.0"
+tensorboardx = "^2.6.2.2"
+pytest = "^8.3.2"
+pyyaml = "^6.0.2"
+geopandas = "^1.0.1"
+scikit-learn = "^1.6.1"
 
 [virtualenvs]
 in-project = true
@@ -27,7 +34,41 @@ prefer-active-python = true
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"
+pyyaml = "^6.0.2"
+
+[tool.poetry.group.checkers.dependencies]
+mypy = "^1.11.1"
+
+[tool.poetry.scripts]
+spatial-splits = "asm_mapping.data.create_spatial_splits.spatial_splits:main"
+train_model = "asm_mapping.train_test_predict.train_model:main"
+hyperopt = "asm_mapping.optimization.hyperopt:main"
+test_model = "asm_mapping.train_test_predict.test_model:main"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+
+[tool.ruff]
+line-length = 100
+extend-select = ["E", "F", "B"]
+ignore = ["E501"]  
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "build",
+    "dist"
+]
+
+
+[tool.ruff.lint.per-file-ignores]
+# exceptions for docstrings in tests
+"tests/*.py" = ["D100", "D103"]
