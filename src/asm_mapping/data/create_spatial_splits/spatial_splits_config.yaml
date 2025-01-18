@@ -1,0 +1,10 @@
+data:
+  input_dir: "/mnt/guanabana/raid/home/pasan001/asm-mapping/data/dataset/ps" # Directory containing dataset (ps or s1)
+  output_dir: "/mnt/guanabana/raid/home/pasan001/asm-mapping/data/ps_split" # Where to save the splits
+
+splits:
+  n_splits: 5 # Number of different splits to generate
+  train_ratio: 0.7 # Ratio for training set
+  grid_size: 3
+
+seed: 96
