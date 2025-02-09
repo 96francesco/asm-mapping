@@ -37,6 +37,7 @@ def train_test_split(config, split_n):
             mode=dataset_mode,
             transforms=config["augmentation"],
             pad=config["pad"],
+            split=f"split_{split_n}"
       )
       
       # extract validation set from training set
@@ -49,6 +50,7 @@ def train_test_split(config, split_n):
             mode=dataset_mode,
             transforms=False,
             pad=config["pad"],
+            split=f"split_{split_n}"
       )
 
       # initialize dataloaders
