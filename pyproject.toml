@@ -27,6 +27,8 @@ pytest = "^8.3.2"
 pyyaml = "^6.0.2"
 geopandas = "^1.0.1"
 scikit-learn = "^1.6.1"
+pytorch-lightning = "^2.5.0.post0"
+ipykernel = "^6.29.5"
 
 [virtualenvs]
 in-project = true
@@ -40,10 +42,9 @@ pyyaml = "^6.0.2"
 mypy = "^1.11.1"
 
 [tool.poetry.scripts]
-spatial-splits = "asm_mapping.data.create_spatial_splits.spatial_splits:main"
-train_model = "asm_mapping.train_test_predict.train_model:main"
+spatial_splits = "asm_mapping.data.create_spatial_splits.spatial_splits:main"
 hyperopt = "asm_mapping.optimization.hyperopt:main"
-test_model = "asm_mapping.train_test_predict.test_model:main"
+train_test_model = "asm_mapping.train_test_predict.main:main"
 
 [build-system]
 requires = ["poetry-core"]
@@ -67,6 +68,7 @@ exclude = [
     "build",
     "dist"
 ]
+indent-width = 6
 
 
 [tool.ruff.lint.per-file-ignores]
