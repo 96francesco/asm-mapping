@@ -2,7 +2,8 @@ import yaml # type: ignore
 import logging
 from typing import Dict, Any
 
-from asm_mapping.data import PlanetScopeDataset
+from asm_mapping.data.planetscope_dataset import PlanetScopeDataset
+from asm_mapping.data.sentinel1_dataset import Sentinel1Dataset
 from asm_mapping.models import LitModelStandalone
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ def load_config(config_path: str) -> Any:
 def get_dataset(config: Dict[str, Any]) -> Any:
       dataset_map = {
             "PlanetScope": PlanetScopeDataset,
+            "Sentinel-1": Sentinel1Dataset,
             # TODO: add other dataset classes when implemented
       }
       try:
