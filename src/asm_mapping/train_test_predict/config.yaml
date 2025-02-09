@@ -1,0 +1,45 @@
+experiment_name: "asm_standalone_splits"
+seed: 42
+n_splits: 5
+dataset_mode: "STANDALONE"
+data_source: "PlanetScope"
+mode: "standalone"
+
+# Dataset parameters
+base_data_dir: "/mnt/guanabana/raid/hdd1/pasan001/asm-mapping/data/ps_split"
+pad: False
+augmentation: True
+
+# Model parameters
+in_channels: 6
+encoder_name: "resnet18"
+decoder_attention_type: "scse"
+decoder_use_batchnorm: True
+threshold: 0.5
+alpha: 0.25
+gamma: 2.0
+
+# Training parameters
+batch_size: 8
+learning_rate: 0.0001
+weight_decay: 0.00001
+epochs: 1
+
+# Early stopping
+early_stopping:
+  patience: 10
+  monitor: "val_loss"
+  mode: "min"
+
+# DataLoader parameters
+num_workers: 4
+persistent_workers: True
+pin_memory: True
+prefetch_factor: 2
+
+# Hardware
+gpus: [0]
+
+# Paths
+log_dir: "logs/"
+checkpoint_dir: "checkpoints/"
