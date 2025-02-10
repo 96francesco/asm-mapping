@@ -12,7 +12,7 @@ keywords = ["deep learning", "satellite imagery", "data fusion", "semantic segme
 [tool.poetry.dependencies]
 python = "^3.10"
 matplotlib = "3.8.0"
-numpy = "1.23"
+numpy = "^1.26.0"
 optuna = "3.5.0"
 torch = "2.2.0"
 torchmetrics = "1.3.1"
@@ -29,6 +29,7 @@ geopandas = "^1.0.1"
 scikit-learn = "^1.6.1"
 pytorch-lightning = "^2.5.0.post0"
 ipykernel = "^6.29.5"
+opencv-python = "^4.11.0.86"
 
 [virtualenvs]
 in-project = true
