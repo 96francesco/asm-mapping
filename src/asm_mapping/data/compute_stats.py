@@ -10,7 +10,7 @@ BAND_CONFIGS = {
             'output_file': 'ps_normalization.yaml'
       },
       'sentinel1': {
-            'bands': {0: 'vv', 1: 'vh'},
+            'bands': {0: 'vv', 1: 'vh', 2: 'ratio'},
             'output_file': 's1_normalization.yaml'
       }
 }
@@ -22,7 +22,7 @@ def compute_training_stats(split_dir: str, sensor: str) -> Dict[str, tuple[float
       training_dir = os.path.join(split_dir, "training_set")
       img_folder = os.path.join(training_dir, "images")
       
-      # Get band configuration for the sensor
+      # get band configuration for the sensor
       bands = BAND_CONFIGS[sensor]['bands']
       band_values: Dict[int, List] = {band: [] for band in bands.keys()}
       
@@ -32,9 +32,13 @@ def compute_training_stats(split_dir: str, sensor: str) -> Dict[str, tuple[float
                   img = ds.read().astype(np.float32)
                   img = np.nan_to_num(img, nan=np.nanmedian(img))
                   
-                  # Split values by band
+                  # split values by band
                   for band in bands.keys():
-                        band_values[band].extend(img[band].flatten())
+                        if band < 2: 
+                              band_values[band].extend(img[band].flatten())
+                        elif sensor == 'sentinel1' and band == 2:  # Ratio for Sentinel-1
+                              ratio = img[0] - img[1]  # VV - VH in dB scale
+                              band_values[band].extend(ratio.flatten())
       
       # compute stats per band
       stats = {}
