@@ -4,6 +4,7 @@ import torch
 import rasterio # type: ignore
 import numpy as np
 import random
+import yaml
 
 from typing import List, Optional, Tuple, Dict, Any, Union
 from torchvision import transforms as T # type: ignore
@@ -18,11 +19,19 @@ class Sentinel1Dataset(Dataset): #type: ignore
       @TODO fix the docstring
       """
       def __init__(self, data_dir: str, mode: DatasetMode = DatasetMode.STANDALONE,
-                   pad: bool = False, transforms: bool = False):
+                   pad: bool = False, transforms: bool = False,
+                   split: Optional[str] = None):
             self.data_dir: str = data_dir
             self.mode: DatasetMode = mode
             self.pad: bool = pad
             self.transforms: Optional[T.Compose] = None
+            
+            if split:
+                  norm_path = os.path.join(os.path.dirname(__file__), "s1_normalization.yaml")
+                  with open(norm_path, 'r') as f:
+                        self.norm_values = yaml.safe_load(f)[split]
+            else:
+                  raise ValueError("Split must be provided for normalization")
             
             self.config: Dict[DatasetMode, Dict[str, Any]] = self._get_mode_config()
             self.img_folder, self.gt_folder = self._setup_folders()
@@ -35,19 +44,17 @@ class Sentinel1Dataset(Dataset): #type: ignore
                   T.RandomRotation(degrees=90),
                   T.RandomAffine(degrees=0, scale=(0.9, 1.1), shear=None)
             ])
-            
-            self.percentiles: Tuple[float, float] = self.compute_global_percentiles()
-      
+                  
       def _get_mode_config(self) -> Dict[DatasetMode, Dict[str, Any]]:
             return {
                   DatasetMode.STANDALONE: {
                         'img_subfolder': 'images',
-                        'gt_subfolder': 'gt',
+                        'gt_subfolder': 'masks',
                         'use_gt': True
                   },
                   DatasetMode.FUSION: {
                         'img_subfolder': 'images/s1',
-                        'gt_subfolder': 'gt',
+                        'gt_subfolder': 'masks',
                         'use_gt': True
                   },
                   DatasetMode.INFERENCE: {
@@ -72,7 +79,7 @@ class Sentinel1Dataset(Dataset): #type: ignore
                         gt_filenames = sorted(os.listdir(self.gt_folder))
                         for img_name in img_filenames:
                               index = img_name.split('_')[-1]
-                              gt_name = f'gt_{index}'
+                              gt_name = f'mask_{index}'
                               if gt_name in gt_filenames:
                                     img_path = os.path.join(self.img_folder, img_name)
                                     gt_path = os.path.join(self.gt_folder, gt_name)
@@ -87,34 +94,17 @@ class Sentinel1Dataset(Dataset): #type: ignore
       def __len__(self) -> int:
             return len(self.dataset)
 
-      def compute_global_percentiles(self) -> Tuple[float, float]:
-            all_values = []
-            for i in random.sample(self.dataset, min(100, len(self.dataset))):
-                  # check if i is a tuple (with GT) or a string (without GT)
-                  if isinstance(i, tuple):
-                        img_path, _ = i
-                  else:
-                        img_path = None
-
-                  with rasterio.open(img_path, 'r') as ds:
-                        img = ds.read().astype(np.float32)
-                  img = self.handle_nan_values(img)
-                  all_values.append(img)
-            
-            all_values = np.concatenate([arr.flatten() for arr in all_values])
-            
-            p2 = np.percentile(all_values, 2)
-            p98 = np.percentile(all_values, 98)
-            
-            return p2, p98
-      
-      def normalize_global_percentile(self, image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
-            p2, p98 = self.percentiles
-            
-            normalized = (image - p2) * (1 / (p98 - p2))
-            
-            normalized = np.clip(normalized, 0, 1)
-
+      def normalize(self, image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+            normalized = np.zeros((3, image.shape[1], image.shape[2]))
+            ratio = image[0] - image[1]
+            bands = ['vv', 'vh', 'ratio']
+            for i, band in enumerate(bands):
+                  p2 = self.norm_values[band]['p2']
+                  p98 = self.norm_values[band]['p98']
+                  if i < 2:  # VV and VH
+                        normalized[i] = np.clip((image[i] - p2) * (1 / (p98 - p2)), 0, 1)
+                  else:  # ratio
+                        normalized[i] = np.clip((ratio - p2) * (1 / (p98 - p2)), 0, 1)
             return normalized
       
       def handle_nan_values(self, img: np.ndarray[Any, Any]) -> Any:
@@ -166,13 +156,10 @@ class Sentinel1Dataset(Dataset): #type: ignore
 
             # handle NaN values
             img = self.handle_nan_values(img)
-            img = self.normalize_global_percentile(img)
-            vv_vh_ratio = self.vv_vh_ratio(img)
+            img = self.normalize(img)
             
             # convert image to tensor
             img_tensor = torch.from_numpy(img).float()
-            vv_vh_ratio_tensor = torch.from_numpy(vv_vh_ratio).float()
-            img_tensor = torch.cat((img_tensor, vv_vh_ratio_tensor), dim=0)
 
             # apply data augmentation
             if self.transforms:
