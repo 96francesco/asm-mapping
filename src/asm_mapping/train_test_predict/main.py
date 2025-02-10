@@ -39,7 +39,7 @@ def main():
       for metric in mean_metrics.index:
             logger.info(f"{metric}: {mean_metrics[metric]:.3f} ± {std_metrics[metric]:.3f}")
             
-            output_path = os.path.join(config['log_dir'], f"{config['experiment_name']}_results.md")
+      output_path = os.path.join(config['log_dir'], f"{config['experiment_name']}_results.md")
       with open(output_path, 'w') as f:
             f.write(f"# Training Results - {config['experiment_name']}\n\n")
             
