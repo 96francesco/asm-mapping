@@ -1,0 +1,39 @@
+# https://git-scm.com/docs/gitignore
+
+# Build
+/dist/
+/build/
+
+# Cache
+.cache/
+.coverage*
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Editor
+/.idea/
+/.vscode/
+.ipynb_checkpoints/
+
+# Environs
+.env
+/.venv/
+
+# Project
+/docs/*
+/mlruns/*
+/outputs/*
+!**/.gitkeep
+
+# Python
+*.py[cod]
+__pycache__/
+
+# other stuff
+run.sh
+*.out
+asm_mapping/data/
+checkpoints/
+lightning_logs/
+logs/
