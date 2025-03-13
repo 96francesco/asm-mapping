@@ -8,6 +8,7 @@ import segmentation_models_pytorch as smp
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
+from asm_mapping.models.lit_model_lf import FusionType
 import torch
 
 from asm_mapping.data import DatasetMode
@@ -19,12 +20,16 @@ logger = logging.getLogger(__name__)
 
 def train_test_split(config, split_n):
       # set paths
-      config["training_dir"] = os.path.join(
-            config["base_data_dir"], f"split_{split_n}", "training_set"
-      )
-      config["testing_dir"] = os.path.join(
-            config["base_data_dir"], f"split_{split_n}", "testing_set"
-      )
+      if config["mode"] == "standalone":
+            config["training_dir"] = os.path.join(
+                  config["base_data_dir"], f"split_{split_n}", "training_set"
+            )
+            config["testing_dir"] = os.path.join(
+                  config["base_data_dir"], f"split_{split_n}", "testing_set"
+            )
+      else:  # fusion modes
+            config["training_dir"] = config["base_data_dir"]
+            config["testing_dir"] = config["base_data_dir"]
 
       # get model and dataset classes
       dataset_class = get_dataset(config)
@@ -37,7 +42,7 @@ def train_test_split(config, split_n):
             mode=dataset_mode,
             transforms=config["augmentation"],
             pad=config["pad"],
-            split=f"split_{split_n}"
+            split=split_n
       )
       
       # extract validation set from training set
@@ -50,7 +55,7 @@ def train_test_split(config, split_n):
             mode=dataset_mode,
             transforms=False,
             pad=config["pad"],
-            split=f"split_{split_n}"
+            split=split_n
       )
 
       # initialize dataloaders
@@ -90,14 +95,26 @@ def train_test_split(config, split_n):
             in_channels=config["in_channels"],
             classes=1,
       )
-      model = model_class(
-            model=unet,
+      if config['mode'] == 'standalone':
+            model = model_class(
+                  model=unet,
+                  lr=config["learning_rate"],
+                  weight_decay=config["weight_decay"],
+                  threshold=config["threshold"],
+                  alpha=config["alpha"],
+                  gamma=config["gamma"],
+            )
+      elif config['mode'] == 'late_fusion':
+            model = model_class(
+            fusion_type=FusionType[config["fusion_type"]],
+            s1_in_channels=config["s1_in_channels"],
+            planet_in_channels=config["planet_in_channels"],
             lr=config["learning_rate"],
             weight_decay=config["weight_decay"],
             threshold=config["threshold"],
             alpha=config["alpha"],
-            gamma=config["gamma"],
-      )
+            gamma=config["gamma"]
+        )
 
       # set callbacks
       callbacks = [
@@ -126,7 +143,8 @@ def train_test_split(config, split_n):
             callbacks=callbacks,
             logger=tb_logger,
             devices=config["gpus"],
-            log_every_n_steps=10
+            log_every_n_steps=10,
+            gradient_clip_val=0.5,
       )
       trainer.fit(model, train_loader, val_loader)
       
