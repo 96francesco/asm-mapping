@@ -28,7 +28,8 @@ class FusionDataset(Dataset):
                 mode: DatasetMode = DatasetMode.FUSION,
                 transforms: bool = False,
                 resample_strategy: ResampleStrategy = ResampleStrategy.DOWNSAMPLE_PLANET,
-                pad: bool = False):
+                pad: bool = False,
+                is_test: bool = False):
             """
             Initialize the fusion dataset.
         
@@ -47,6 +48,7 @@ class FusionDataset(Dataset):
             self.resample_strategy = resample_strategy
             self.pad = pad
             self.transforms = None
+            self.is_test = is_test
             
             if transforms:
                   self.transforms = T.Compose([
@@ -55,10 +57,12 @@ class FusionDataset(Dataset):
                   T.RandomRotation(degrees=90),
                   T.RandomAffine(degrees=0, scale=(0.9, 1.1), shear=None)
                   ])
-                  
+            
+            dataset_type = 'testing_set' if is_test else 'training_set'
+            
             # setup paths
-            self.planet_dir = os.path.join(data_dir, 'ps_split', f'split_{split}', 'training_set')
-            self.s1_dir = os.path.join(data_dir, 's1_split', f'split_{split}', 'training_set')
+            self.planet_dir = os.path.join(data_dir, 'ps_split', f'split_{split}', dataset_type)
+            self.s1_dir = os.path.join(data_dir, 's1_split', f'split_{split}', dataset_type)
             self.gt_dir = os.path.join(self.planet_dir, 'masks')
             
             # get matched pairs of files
@@ -201,11 +205,9 @@ class FusionDataset(Dataset):
             # Calculate indices
             ndvi = (nir - red) / (nir + red + 1e-10)
             ndwi = (green - nir) / (green + nir + 1e-10)
-            savi = (nir - red) * 1.5 / (nir + red + 0.5 + 1e-10)
             
             planet_data = np.vstack([planet_data, ndvi[np.newaxis, ...], 
-                                         ndwi[np.newaxis, ...], 
-                                         savi[np.newaxis, ...]])
+                                         ndwi[np.newaxis, ...]])
             
             # add Sentinel-1 derived band
             vv = s1_data[0]
