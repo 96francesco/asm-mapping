@@ -7,48 +7,54 @@ from typing import Dict, List
 BAND_CONFIGS = {
       'planetscope': {
             'bands': {0: 'blue', 1: 'green', 2: 'red', 3: 'nir'},
-            'output_file': 'ps_normalization.yaml'
       },
       'sentinel1': {
             'bands': {0: 'vv', 1: 'vh', 2: 'ratio'},
-            'output_file': 's1_normalization.yaml'
       }
 }
 
 def compute_training_stats(split_dir: str, sensor: str) -> Dict[str, tuple[float, float]]:
-      """
-      Compute percentiles from training images of a split for each band.
-      """
-      training_dir = os.path.join(split_dir, "training_set")
-      img_folder = os.path.join(training_dir, "images")
-      
-      # get band configuration for the sensor
-      bands = BAND_CONFIGS[sensor]['bands']
-      band_values: Dict[int, List] = {band: [] for band in bands.keys()}
-      
-      for img_name in os.listdir(img_folder):
+    """
+    Compute percentiles from training images of a split for each band.
+    """
+    training_dir = os.path.join(split_dir, "training_set")
+    img_folder = os.path.join(training_dir, "images")
+    
+    # get band configuration for the sensor
+    bands = BAND_CONFIGS[sensor]['bands']
+    band_values: Dict[int, List] = {band: [] for band in bands.keys()}
+    
+    for img_name in os.listdir(img_folder):
             img_path = os.path.join(img_folder, img_name)
             with rasterio.open(img_path, "r") as ds:
                   img = ds.read().astype(np.float32)
                   img = np.nan_to_num(img, nan=np.nanmedian(img))
                   
-                  # split values by band
-                  for band in bands.keys():
-                        if band < 2: 
+            # split values by band
+            for band in bands.keys():
+                  if band < len(img):  
+                        if sensor == 'planetscope':
                               band_values[band].extend(img[band].flatten())
-                        elif sensor == 'sentinel1' and band == 2:  # Ratio for Sentinel-1
-                              ratio = img[0] - img[1]  # VV - VH in dB scale
-                              band_values[band].extend(ratio.flatten())
-      
-      # compute stats per band
-      stats = {}
-      for band_idx, band_name in bands.items():
-            values = np.array(band_values[band_idx])
+                        elif sensor == 'sentinel1':
+                              if band < 2:  
+                                    band_values[band].extend(img[band].flatten())
+                              elif band == 2 and len(img) >= 2:  # Ratio for Sentinel-1
+                                    ratio = img[0] - img[1]  # VV - VH in dB scale
+                                    band_values[band].extend(ratio.flatten())
+
+    # compute stats per band
+    stats = {}
+    for band_idx, band_name in bands.items():
+        values = np.array(band_values[band_idx])
+        if len(values) > 0:
             p2 = np.percentile(values, 2)
             p98 = np.percentile(values, 98)
             stats[band_name] = (p2, p98)
-      
-      return stats
+        else:
+            print(f"Warning: No valid data for band {band_name}")
+            stats[band_name] = (0.0, 1.0)  # Default fallback values
+    
+    return stats
 
 def main():
       parser = argparse.ArgumentParser()
