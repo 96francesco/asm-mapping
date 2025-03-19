@@ -5,7 +5,7 @@ from typing import Dict, Any
 from asm_mapping.data.planetscope_dataset import PlanetScopeDataset
 from asm_mapping.data.sentinel1_dataset import Sentinel1Dataset
 from asm_mapping.data.fusion_dataset import FusionDataset
-from asm_mapping.models import LitModelStandalone, LitModelLateFusion
+from asm_mapping.models import LitModelStandalone, LitModelLateFusion, LitModelEarlyFusion
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ def get_model(config: Dict[str, Any]) -> Any:
       model_map = {
             "standalone": LitModelStandalone,
             "late_fusion": LitModelLateFusion,
+            "early_fusion": LitModelEarlyFusion,
             # TODO: add other model classes when implemented
       }
       try:
