@@ -25,6 +25,8 @@
 /mlruns/*
 /outputs/*
 !**/.gitkeep
+reports/
+data/
 
 # Python
 *.py[cod]
