@@ -1,5 +1,4 @@
 import logging
-import argparse
 from pathlib import Path
 from torch.utils.data import random_split
 import os
@@ -9,6 +8,7 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 from asm_mapping.models.lit_model_lf import FusionType
+from asm_mapping.data.fusion_dataset import ResampleStrategy
 import torch
 
 from asm_mapping.data import DatasetMode
@@ -51,8 +51,9 @@ def train_test_split(config, split_n):
                   mode=dataset_mode,
                   transforms=config["augmentation"],
                   pad=config["pad"],
-                  split=f"split_{split_n}", 
-                  is_test=False
+                  split=split_n, 
+                  is_test=False,
+                  resample_strategy=ResampleStrategy[config["resample_strategy"]]
             )
 
       # extract validation set from training set
@@ -74,8 +75,9 @@ def train_test_split(config, split_n):
                   mode=dataset_mode,
                   transforms=False,
                   pad=config["pad"],
-                  split=f"split_{split_n}",
-                  is_test=True
+                  split=split_n,
+                  is_test=True,
+                  resample_strategy=ResampleStrategy[config["resample_strategy"]],
             )
 
       # initialize dataloaders
@@ -134,7 +136,17 @@ def train_test_split(config, split_n):
             threshold=config["threshold"],
             alpha=config["alpha"],
             gamma=config["gamma"]
-        )
+            )
+      elif config['mode'] == 'early_fusion':
+            model = model_class(
+            s1_in_channels=config["s1_in_channels"],
+            planet_in_channels=config["planet_in_channels"],
+            lr=config["learning_rate"],
+            weight_decay=config["weight_decay"],
+            threshold=config["threshold"],
+            alpha=config["alpha"],
+            gamma=config["gamma"]
+            )
 
       # set callbacks
       callbacks = [
@@ -149,6 +161,7 @@ def train_test_split(config, split_n):
                   + "_{epoch:02d}_{val_f1_score_asm:.3f}",
                   monitor=config["early_stopping"]["monitor"],
                   mode=config["early_stopping"]["mode"],
+                  save_top_k=1,
             ),
       ]
 
