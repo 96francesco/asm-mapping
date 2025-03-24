@@ -11,31 +11,48 @@ from torchmetrics import MetricCollection
 
 class LitModelEarlyFusion(pl.LightningModule):
       """
-      PyTorch Lightning module for early fusion of PlanetScope and Sentinel-1 data.
+      PyTorch Lightning module for early fusion of PlanetScope and Sentinel-1 data for ASM mapping.
       
       This model implements input-level fusion of PlanetScope optical imagery and 
-      Sentinel-1 SAR data. It concatenates both data sources along the channel dimension
-      before passing them through a single encoder-decoder network.
+      Sentinel-1 SAR data for detecting Artisanal and Small-scale Mining (ASM) sites.
+      Unlike late fusion which combines features after encoding, early fusion
+      concatenates data sources along the channel dimension at the input stage
+      before processing through a single encoder-decoder network.
+      
+      The model incorporates channel attention to dynamically weight the importance
+      of different input bands, allowing it to focus on the most relevant features
+      from each data source for ASM segmentation.
       """
       def __init__(self,
                  s1_in_channels: int = 3,
-                 planet_in_channels: int = 7,
+                 planet_in_channels: int = 6,
                  lr: float = 1e-3, 
                  threshold: float = 0.5,
                  weight_decay: float = 1e-5,
                  alpha: float = 0.25,
                  gamma: float = 2.0):
             """
-            Initialize the Early Fusion model.
+            Initialize the Early Fusion model with channel attention mechanism.
+            
+            This model concatenates PlanetScope and Sentinel-1 data channels at the input
+            level and applies channel attention to dynamically weight the contribution of
+            each band. The combined input is then processed through a single U-Net with
+            ResNet18 encoder and spatial and channel squeeze-excitation (scSE) attention.
             
             Args:
-                  s1_in_channels (int): Number of input channels for Sentinel-1 data
-                  planet_in_channels (int): Number of input channels for PlanetScope data
-                  lr (float): Learning rate for optimizer
-                  threshold (float): Threshold for binary classification
-                  weight_decay (float): Weight decay for optimizer
-                  alpha (float): Alpha parameter for Focal Loss
-                  gamma (float): Gamma parameter for Focal Loss
+                  s1_in_channels (int): Number of input channels for Sentinel-1 data (typically 3 for VV, VH, ratio)
+                  planet_in_channels (int): Number of input channels for PlanetScope data (typically 6 for RGBNIR+indices)
+                  lr (float): Learning rate for Adam optimizer
+                  threshold (float): Classification threshold for converting probabilities to binary predictions
+                  weight_decay (float): L2 regularization parameter for optimizer
+                  alpha (float): Class balancing parameter for Focal Loss (higher values increase weight of positive class)
+                  gamma (float): Focusing parameter for Focal Loss (higher values focus more on hard examples)
+                  
+            Note:
+                  Channel attention is applied to the combined input to enhance the model's
+                  ability to focus on the most informative bands from each data source.
+                  The model is trained with Focal Loss to address class imbalance common
+                  in ASM segmentation tasks.
             """
             super().__init__()
             self.s1_in_channels = s1_in_channels
@@ -48,7 +65,11 @@ class LitModelEarlyFusion(pl.LightningModule):
             self.gamma = gamma
             self.optimizer = torch.optim.Adam
             self.criterion = smp.losses.FocalLoss(alpha=alpha, gamma=gamma, mode='binary')
-            
+            self.channel_attention = nn.Sequential(
+                  nn.Conv2d(self.combined_in_channels, self.combined_in_channels, kernel_size=1),
+                  nn.Sigmoid()
+                  )
+
             # initialize the U-Net model with combined input channels
             self.model = smp.Unet(
                   encoder_name="resnet18",
@@ -88,21 +109,15 @@ class LitModelEarlyFusion(pl.LightningModule):
             """
             # concatenate inputs along the channel dimension
             combined_input = torch.cat([planet_input, s1_input], dim=1)
-            return self.model(combined_input)
+            
+            # apply channel attention
+            attention_weights = self.channel_attention(combined_input)
+            weighted_input = combined_input * attention_weights
+            
+            return self.model(weighted_input)
 
       def training_step(self, train_batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
                         batch_idx: int) -> torch.Tensor:
-            """
-            Training step for the model.
-            
-            Args:
-                  train_batch (Tuple[torch.Tensor, torch.Tensor, torch.Tensor]): 
-                        Tuple containing (planet_input, s1_input, target)
-                  batch_idx (int): Batch index
-                  
-            Returns:
-                  torch.Tensor: Loss value
-            """
             planet_input, s1_input, y = train_batch
             outputs = self(planet_input, s1_input)
             y = y.unsqueeze(1).type_as(planet_input)
@@ -119,17 +134,6 @@ class LitModelEarlyFusion(pl.LightningModule):
 
       def validation_step(self, val_batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
                         batch_idx: int) -> torch.Tensor:
-            """
-            Validation step for the model.
-            
-            Args:
-                  val_batch (Tuple[torch.Tensor, torch.Tensor, torch.Tensor]): 
-                        Tuple containing (planet_input, s1_input, target)
-                  batch_idx (int): Batch index
-                  
-            Returns:
-                  torch.Tensor: Loss value
-            """
             planet_input, s1_input, y = val_batch
             y = y.unsqueeze(1).type_as(planet_input)
             outputs = self(planet_input, s1_input)
@@ -156,17 +160,6 @@ class LitModelEarlyFusion(pl.LightningModule):
 
       def test_step(self, test_batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
                         batch_idx: int) -> torch.Tensor:
-            """
-            Test step for the model.
-            
-            Args:
-                  test_batch (Tuple[torch.Tensor, torch.Tensor, torch.Tensor]): 
-                        Tuple containing (planet_input, s1_input, target)
-                  batch_idx (int): Batch index
-                  
-            Returns:
-                  torch.Tensor: Loss value
-            """
             planet_input, s1_input, y = test_batch
             y = y.unsqueeze(1).type_as(planet_input)
             outputs = self(planet_input, s1_input)
@@ -191,12 +184,6 @@ class LitModelEarlyFusion(pl.LightningModule):
             return loss
 
       def configure_optimizers(self):
-            """
-            Configure the optimizer and learning rate scheduler.
-            
-            Returns:
-                  dict: Optimizer configuration
-            """
             optimizer = self.optimizer(self.parameters(), 
                                     lr=self.lr, 
                                     weight_decay=self.weight_decay)
