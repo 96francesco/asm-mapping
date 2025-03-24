@@ -17,34 +17,52 @@ class FusionType(Enum):
 
 class LitModelLateFusion(pl.LightningModule):
       """
-      PyTorch Lightning module for late fusion of PlanetScope and Sentinel-1 data.
+      PyTorch Lightning module for late fusion of PlanetScope and Sentinel-1 data for ASM mapping.
       
       This model implements feature-level fusion of PlanetScope optical imagery and 
-      Sentinel-1 SAR data. It uses separate encoders for each data source and fuses
-      the extracted features before decoding into the final segmentation output.
-      Multiple fusion strategies are supported (concatenation, summation, averaging).
+      Sentinel-1 SAR data for accurate detection of Artisanal and Small-scale Mining (ASM) sites.
+      It uses separate encoders for each data source to extract complementary features:
+      - Optical data provides spectral information about land cover
+      - SAR data provides textural information and all-weather capabilities
+      
+      Features from both sources are combined using learnable weights and a selectable
+      fusion strategy (concatenation, summation, or averaging) before decoding into
+      the final segmentation map. This approach leverages the strengths of both 
+      data sources to improve ASM detection performance over single-source models.
       """
       def __init__(self, 
                   fusion_type: FusionType = FusionType.CONCATENATE,
                   s1_in_channels: int = 3,
-                  planet_in_channels: int = 7,
+                  planet_in_channels: int = 6,
                   lr: float = 1e-3, 
                   threshold: float = 0.5,
                   weight_decay: float = 1e-5,
                   alpha: float = 0.25,
                   gamma: float = 2.0):
             """
-            Initialize the Late Fusion model.
+            Initialize the Late Fusion model with dual-stream architecture.
+      
+            This model uses two separate ResNet encoders (one for PlanetScope data and 
+            one for Sentinel-1 data), with learnable fusion weights to control the relative 
+            importance of each data source at different feature levels. The fusion strategy
+            (concatenation, sum, or average) determines how features are combined before
+            being passed to the U-Net decoder.
             
             Args:
                   fusion_type (FusionType): Strategy for fusing features (concatenate, sum, average)
-                  s1_in_channels (int): Number of input channels for Sentinel-1 data
-                  planet_in_channels (int): Number of input channels for PlanetScope data
-                  lr (float): Learning rate for optimizer
-                  threshold (float): Threshold for binary classification
-                  weight_decay (float): Weight decay for optimizer
-                  alpha (float): Alpha parameter for Focal Loss
-                  gamma (float): Gamma parameter for Focal Loss
+                  s1_in_channels (int): Number of input channels for Sentinel-1 data (typically 3 for VV, VH, ratio)
+                  planet_in_channels (int): Number of input channels for PlanetScope data (typically 6 for RGBNIR+indices)
+                  lr (float): Learning rate for Adam optimizer
+                  threshold (float): Classification threshold for converting probabilities to binary predictions
+                  weight_decay (float): L2 regularization parameter for optimizer
+                  alpha (float): Class balancing parameter for Focal Loss (higher values increase weight of positive class)
+                  gamma (float): Focusing parameter for Focal Loss (higher values focus more on hard examples)
+            
+            Note:
+                  The model automatically adjusts channel dimensions based on the fusion type selected.
+                  Batch normalization is applied to features before fusion to ensure stable training.
+                  Metrics tracked include accuracy, precision, recall, and F1-score, with special
+                  attention to the ASM class performance.
             """
             super().__init__()
             self.fusion_type = fusion_type
@@ -60,6 +78,10 @@ class LitModelLateFusion(pl.LightningModule):
             self.s1_encoder = smp.encoders.get_encoder('resnet18', in_channels=s1_in_channels, weights='imagenet')
             self.planet_encoder = smp.encoders.get_encoder('resnet18', in_channels=planet_in_channels, weights='imagenet')
             
+            self.fusion_weights = nn.ParameterList([
+                  nn.Parameter(torch.FloatTensor([0.7, 0.3])) for _ in range(len(self.s1_encoder.out_channels[1:]))
+                  ])
+            
             # channel dim depends on fusion type
             if fusion_type == FusionType.CONCATENATE:
                   self.encoder_channels = [128, 128, 256, 512, 1024]
@@ -67,8 +89,8 @@ class LitModelLateFusion(pl.LightningModule):
                   self.channel_adapters = None
             else:
                   # for sum and average, the feature channels won't be doubled
-                  self.encoder_channels = [128, 64, 128, 256, 512]  #  do not change first channel dim
-                  self.decoder_channels = [1024, 512, 256, 128, 128]  # keep same decoder channels
+                  self.encoder_channels = [128, 64, 128, 256, 512] 
+                  self.decoder_channels = [1024, 512, 256, 128, 128]
                   
                   # channel adapters to match expected channel dimensions
                   self.channel_adapters = nn.ModuleList([
@@ -151,13 +173,17 @@ class LitModelLateFusion(pl.LightningModule):
                   s1_norm = self.s1_normalizers[i-1](s1_features[i])
                   planet_norm = self.planet_normalizers[i-1](planet_features[i])
                   
-                  # do fusion baed on selected type
+                  # get learned weights
+                  weights = torch.softmax(self.fusion_weights[i-1], dim=0)
+                  
+                  # apply weigthed fusion (based on fusion type)
                   if self.fusion_type == FusionType.CONCATENATE:
-                        fused = torch.cat([s1_norm, planet_norm], dim=1)
+                        # apply weights before concatenation
+                        fused = torch.cat([s1_norm * weights[0], planet_norm * weights[1]], dim=1)
                   elif self.fusion_type == FusionType.SUM:
-                        fused = s1_norm + planet_norm
+                        fused = s1_norm * weights[0] + planet_norm * weights[1]
                   else:  # AVERAGE
-                        fused = (s1_norm + planet_norm) / 2
+                        fused = (s1_norm * weights[0] + planet_norm * weights[1])
                         
                   combined_features.append(fused)
             
