@@ -1,0 +1,3 @@
+[submodule "gee_s1_ard"]
+	path = gee_s1_ard
+	url = https://github.com/adugnag/gee_s1_ard.git
